@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Траєкторія руху</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f4f8;
+            text-align: center; 
+            margin: 0;
+            padding: 15px; 
+        }
+
+        .container {
+            max-width: 600px; 
+            margin: 0 auto;
+            background-color: white;
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-bottom: 10px; 
+            color: #333;
+            font-weight: 600;
+        }
+
+        .inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); 
+            gap: 10px; 
+            margin-bottom: 12px; 
+        }
+
+        label {
+            font-size: 13px;
+            color: #555;
+            display: inline-block;
+        }
+
+        input {
+            padding: 6px; 
+            width: 100%;
+            font-size: 13px; 
+            border: 1px solid #ccc;
+            border-radius: 4px; 
+            background-color: #f8f8f8;
+            transition: all 0.3s ease;
+        }
+
+        button {
+            margin: 6px;
+            padding: 8px 16px; 
+            font-size: 14px; 
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px; 
+            transition: 0.3s ease;
+        }
+
+        svg { 
+            border: 2px solid #ddd; 
+            margin-top: 20px; 
+            background: #fff;
+            border-radius: 8px; 
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats {
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+            color: #333;
+        }
+
+        .peak-point {
+            fill: red;
+            stroke: black;
+            stroke-width: 1;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h2>Параметри руху</h2>
+        <div class="inputs">
+            <label>Початкове X: <input type="number" id="startX" value="0"></label>
+            <label>Початкове Y: <input type="number" id="startY" value="0"></label>
+            <label>Кут (градуси): <input type="number" id="angle" value="45"></label>
+            <label>Швидкість: <input type="number" id="velocity" value="50"></label>
+            <label>Прискорення: <input type="number" id="acceleration" value="-9.8"></label>
+            <label>Колір: <input type="color" id="color" value="#ff0000"></label>
+        </div>
+        <div class="buttons">
+            <button onclick="drawTrajectory()">Побудувати</button>
+            <button onclick="clearCanvas()">Очистити</button>
+        </div>
+        <div class="stats">
+            <p id="maxHeight">Макс. висота: -</p>
+            <p id="maxDistance">Макс. дальність: -</p>
+            <p id="flightTime">Час польоту: -</p>
+        </div>
+        <svg id="canvas" width="600" height="600"></svg> 
+    </div>
+    <script>
+        const svg = d3.select("#canvas");
+        const width = +svg.attr("width");
+        const height = +svg.attr("height");
+        let allTrajectories = [];
+
+        function getInputs() {
+            return {
+                startX: parseFloat(document.getElementById("startX").value),
+                startY: parseFloat(document.getElementById("startY").value),
+                angle: parseFloat(document.getElementById("angle").value) * Math.PI / 180,
+                velocity: parseFloat(document.getElementById("velocity").value),
+                acceleration: parseFloat(document.getElementById("acceleration").value),
+                color: document.getElementById("color").value
+            };
+        }
+
+        function setupCanvas() {
+            drawGrid();
+            drawAxes();
+            drawTicks();
+        }
+
+        function drawTrajectory() {
+            const { startX, startY, angle, velocity, acceleration, color } = getInputs();
+            let t = 0, dt = 0.1;
+            let x = startX, y = startY;
+            let maxHeight = startY, maxDistance = startX;
+            let peakTime = 0;
+            const trajectory = [];
+
+            while (y >= 0) { 
+                x = startX + velocity * Math.cos(angle) * t;
+                y = startY + velocity * Math.sin(angle) * t + 0.5 * acceleration * t * t;
+                trajectory.push([x, y]);
+
+                if (y > maxHeight) {
+                    maxHeight = y;
+                    peakTime = t;
+                }
+                maxDistance = x;
+
+                t += dt;
+            }
+
+            const flightTime = t;
+            document.getElementById("maxHeight").textContent = `Макс. висота: ${maxHeight.toFixed(2)} м`;
+            document.getElementById("maxDistance").textContent = `Дальність: ${maxDistance.toFixed(2)} м`;
+            document.getElementById("flightTime").textContent = `Час польоту: ${flightTime.toFixed(2)} с`;
+
+            allTrajectories.push({ 
+                data: trajectory, 
+                color,
+                peakPoint: [startX + velocity * Math.cos(angle) * peakTime, 
+                           startY + velocity * Math.sin(angle) * peakTime + 0.5 * acceleration * peakTime * peakTime]
+            });
+
+            svg.selectAll("*").remove();
+            setupCanvas();
+
+            allTrajectories.forEach(function (trajectory) {
+                svg.append("path")
+                    .data([trajectory.data])
+                    .attr("d", d3.line()
+                        .x(d => width / 2 + d[0])
+                        .y(d => height / 2 - d[1])
+                        .curve(d3.curveCardinal))
+                    .attr("fill", "none")
+                    .attr("stroke", trajectory.color)
+                    .attr("stroke-width", 2);
+
+                svg.append("circle")
+                    .attr("cx", width / 2 + trajectory.peakPoint[0])
+                    .attr("cy", height / 2 - trajectory.peakPoint[1])
+                    .attr("r", 5)
+                    .attr("class", "peak-point")
+                    .append("title")
+                    .text(`Вершина: (${trajectory.peakPoint[0].toFixed(1)}, ${trajectory.peakPoint[1].toFixed(1)})`);
+            });
+        }
+
+        function clearCanvas() {
+            svg.selectAll("*").remove();
+            allTrajectories = [];
+            document.getElementById("maxHeight").textContent = "Макс. висота: -";
+            document.getElementById("maxDistance").textContent = "Дальність: -";
+            document.getElementById("flightTime").textContent = "Час польоту: -";
+            setupCanvas();
+        }
+
+        function drawAxes() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            svg.append("line")
+                .attr("x1", centerX)
+                .attr("y1", 0)
+                .attr("x2", centerX)
+                .attr("y2", height)
+                .attr("stroke", "black")
+                .attr("stroke-width", 2);
+            
+            svg.append("line")
+                .attr("x1", 0)
+                .attr("y1", centerY)
+                .attr("x2", width)
+                .attr("y2", centerY)
+                .attr("stroke", "black")
+                .attr("stroke-width", 2);
+        }
+
+        function drawGrid() {
+            const step = 50;
+            for (let x = 0; x <= width; x += step) {
+                svg.append("line")
+                    .attr("x1", x)
+                    .attr("y1", 0)
+                    .attr("x2", x)
+                    .attr("y2", height)
+                    .attr("stroke", "#d0d0d0")
+                    .attr("stroke-width", 1);
+            }
+            for (let y = 0; y <= height; y += step) {
+                svg.append("line")
+                    .attr("x1", 0)
+                    .attr("y1", y)
+                    .attr("x2", width)
+                    .attr("y2", y)
+                    .attr("stroke", "#d0d0d0")
+                    .attr("stroke-width", 1);
+            }
+        }
+
+        function drawTicks() {
+            const step = 50;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            for (let x = step; x <= width / 2; x += step) {
+                svg.append("text")
+                    .attr("x", centerX + x - 10)
+                    .attr("y", centerY + 15)
+                    .text(x)
+                    .attr("font-size", "12px");
+                
+                svg.append("text")
+                    .attr("x", centerX - x - 15)
+                    .attr("y", centerY + 15)
+                    .text(-x)
+                    .attr("font-size", "12px");
+            }
+
+            for (let y = step; y <= height / 2; y += step) {
+                svg.append("text")
+                    .attr("x", centerX + 5)
+                    .attr("y", centerY - y + 5)
+                    .text(y)
+                    .attr("font-size", "12px");
+                
+                svg.append("text")
+                    .attr("x", centerX + 5)
+                    .attr("y", centerY + y + 5)
+                    .text(-y)
+                    .attr("font-size", "12px");
+            }
+        }
+
+        window.onload = setupCanvas;
+    </script>
+</body>
+</html>
